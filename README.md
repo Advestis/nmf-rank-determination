@@ -1,11 +1,10 @@
-## On Rank Selection in Non-Negative Matrix Factorization using Concordance</br>
-<sub>Official GitHub repository for the article</sub>
+## On Rank Selection in Non-Negative Matrix Factorization using Concordance</br><sub>Official *GitHub* repository for the original MDPI Mathematics paper</sub>
 
 ![Graphical_abstract](images/graphical_abstract.png)
 *Credits*: DALL·E 3
 
 **On Rank Selection in Non-Negative Matrix Factorization using Concordance**<br>
-Paul Fogel, Christophe Geisslr, Nicolas Morizet and George Luta<br>
+Paul Fogel, Christophe Geissler, Nicolas Morizet and George Luta<br>
 DOI: xxx
 
 **Abstract**: The choice of the factorization rank of a matrix is critical, e.g.,
@@ -29,8 +28,16 @@ for its original or ratio-to-error forms, significantly outperforms *ccc*.
 It is important to note that the new criterion works with a broader class of matrices,
 where the underlying clusters are not assumed to be orthogonal.
 
-**Datasets**:</br>
+**Datasets**</br>
 - Swimmer
 - Sausage
 - Brunet
 - MNIST
+
+**Requirements**
+- *TBD*
+
+## Citation
+```
+
+```
