@@ -1,10 +1,14 @@
 import os
 import numpy as np
 import pandas as pd
+import time
 from sklearn.decomposition import NMF
 from sklearn.preprocessing import normalize
 from scipy.cluster.hierarchy import linkage, cophenet
 from tqdm import tqdm
+
+OUTPUTS_PATH = r'../outputs'
+
 
 def read_dataset(path_data, dataset_name):
     """Function that reads a dataset.
@@ -65,13 +69,15 @@ def perform_cophenetic_test(data, comp_min, comp_max, iter_max, n_runs):
         W Test matrix
     np.array
         H Test matrix
+    np.array
+        co_H matrix
 
     """
 
     # Matrices Initialization
     (n, p) = np.shape(data)
-    c_w = np.zeros(n)
-    c_h = np.zeros(p)
+    #c_w = np.zeros(n)
+    #c_h = np.zeros(p)
     iln1 = np.triu_indices(n, 1)
     ilp1 = np.triu_indices(p, 1)
     test_w = np.zeros(comp_max)
@@ -89,7 +95,8 @@ def perform_cophenetic_test(data, comp_min, comp_max, iter_max, n_runs):
                                max_iter=iter_max, random_state=0)
 
         for _ in tqdm(range(0, n_runs)):
-            w4_init = np.random.rand(n, n_comp); h4_init = np.random.rand(p, n_comp).T
+            w4_init = np.random.rand(n, n_comp)
+            h4_init = np.random.rand(p, n_comp).T
             w4 = nmf_model_random.fit_transform(data, W=w4_init, H=h4_init)
             h4 = nmf_model_random.components_.T
             c_w = np.argmax(normalize(w4, axis=0), axis=1)
@@ -108,7 +115,71 @@ def perform_cophenetic_test(data, comp_min, comp_max, iter_max, n_runs):
         test_w[n_comp - 1] = cpc_w / error
         test_h[n_comp - 1] = cpc_h / error
 
-    return test_w, test_h, co_h
+    return test_w, test_h
+
+
+def perform_concordance_test(data, comp_min, comp_max, iter_max, n_runs):
+    """Function that performs the concordance test for the NMF model.
+
+    Parameters
+    ----------
+    data: np.array
+        The dataset
+    comp_min: int
+        Minimum number of components
+    comp_max: int
+        Maximum number of components
+    iter_max: int
+        Maximum number of iterations
+    n_runs: int
+        Number of runs
+
+    Returns
+    -------
+    np.array
+        W Test matrix
+    np.array
+        H Test matrix
+
+    """
+
+    # Matrices Initialization
+    (n, p) = np.shape(data)
+    test_w = np.zeros(comp_max)
+    test_h = np.zeros(comp_max)
+
+    for n_comp in tqdm(range(comp_min, comp_max + 1)):
+        nmf_model = NMF(n_components=n_comp, init='nndsvda', solver='cd', beta_loss='frobenius', max_iter=iter_max, random_state=0)
+        w4 = nmf_model.fit_transform(data)
+        h4 = nmf_model.components_.T
+        error = np.linalg.norm(data - w4 @ h4.T)
+        nmf_model_random = NMF(n_components=n_comp, init='custom', solver='cd', beta_loss='frobenius', max_iter=iter_max, random_state=0)
+        np.random.seed(234)
+
+        for i_run in tqdm(range(0, n_runs)):
+            w4_init = np.random.rand(n, n_comp)
+            h4_init = np.random.rand(p, n_comp).T
+            w4_random = nmf_model_random.fit_transform(data, W=w4_init.copy(), H=h4_init.copy())
+            h4_random = nmf_model_random.components_.T
+            mcorr = np.corrcoef(w4, w4_random, rowvar=False)[0:n_comp, n_comp:2 * n_comp]
+            mcorr[np.isnan(mcorr)] = -1
+            idx = mcorr.argmax(axis=1)
+            mean_corr = np.mean([mcorr[i, idx[i]] for i in range(0, n_comp)])
+            x = np.unique(idx).shape[0]
+            # Move concordance into [0,1] range instead of [1/n_comp, 1] to cancel bias for low ranks
+            # and correct for mean correlation level in matches
+            test_w[n_comp - 1] += ((x * (x - 1)) / ((n_comp - 1) * n_comp)) * mean_corr
+            mcorr = np.corrcoef(h4, h4_random, rowvar=False)[0:n_comp, n_comp:2 * n_comp]
+            mcorr[np.isnan(mcorr)] = -1
+            idx = mcorr.argmax(axis=1)
+            mean_corr = np.mean([mcorr[i, idx[i]] for i in range(0, n_comp)])
+            x = np.unique(idx).shape[0]
+            test_h[n_comp - 1] += ((x * (x - 1)) / ((n_comp - 1) * n_comp)) * mean_corr
+
+        test_w[n_comp - 1] /= (n_runs * error)
+        test_h[n_comp - 1] /= (n_runs * error)
+
+    return test_w, test_h
 
 
 def cusum_calculation(comp_min, comp_max, w_test, h_test):
@@ -173,3 +244,72 @@ def rank_estimation(cusum, comp_max):
 
     print(f"[INFO] Estimated rank = {n_comp_est}")
     return n_comp_est
+
+
+def perform_rank_determination(data, comp_min, comp_max, iter_max, n_runs, method="cophenetic", save_res=False):
+    """Function that performs the rank determination for the NMF model.
+
+    Parameters
+    ----------
+    data: np.array
+        The dataset
+    comp_min: int
+        Minimum number of components
+    comp_max: int
+        Maximum number of components
+    iter_max: int
+        Maximum number of iterations
+    n_runs: int
+        Number of runs
+    method: str
+        Method to use for the rank determination
+    save_res: bool
+        Saves the results if True
+
+    Returns
+    -------
+    np.array
+        W Test matrix
+    np.array
+        H Test matrix
+    np.array
+        Cusum
+    float
+        Estimated rank
+
+    """
+
+    time_start = time.time()
+
+    # Performing the test
+    if method == 'cophenetic':
+        print(f"[INFO] Performing Cophenetic Test...")
+        test_w, test_h = perform_cophenetic_test(data.copy(), comp_min, comp_max, iter_max, n_runs)
+        filename_to_save = f"WH_cophenetic_test.csv"
+    elif method == "concordance":
+        print(f"[INFO] Performing Concordance Test...")
+        test_w, test_h = perform_concordance_test(data.copy(), comp_min, comp_max, iter_max, n_runs)
+        filename_to_save = f"WH_concordance_test.csv"
+    else:
+        test_w = None
+        test_h = None
+        filename_to_save = ""
+
+    # Cusum Calculation
+    print("[INFO] Calculating Cusum...")
+    cusum = cusum_calculation(comp_min, comp_max, test_w, test_h)
+
+    # Rank Estimation
+    print("[INFO] Computing Rank Estimation...")
+    estimated_rank = rank_estimation(cusum, comp_max)
+
+    time_elapsed = (time.time() - time_start)
+
+    print(f"[INFO] Elapsed time: {time_elapsed} seconds")
+
+    # Saving results
+    if save_res:
+        data_to_save = np.concatenate((test_w, test_h), axis=0)
+        np.savetxt(os.path.join(OUTPUTS_PATH, filename_to_save), data_to_save, delimiter=',')
+
+    return test_w, test_h, cusum, estimated_rank
