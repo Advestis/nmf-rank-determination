@@ -28,14 +28,19 @@ for its original or ratio-to-error forms, significantly outperforms *ccc*.
 It is important to note that the new criterion works with a broader class of matrices,
 where the underlying clusters are not assumed to be orthogonal.
 
-**Datasets**</br>
+**Datasets used in the study**</br>
 - Swimmer
 - Sausage
 - Brunet
 - MNIST
 
 **Requirements**
-- *TBD*
+- Python 3.9.0
+- scikit-learn 
+- pandas 
+- numpy 
+- scipy 
+- tqdm
 
 ## Citation
 ```
